@@ -237,65 +237,67 @@ const bulkUpdateMutation = `
   `;
 
 exports.createProduct = async (req, res) => {
-  const { title,productType,vendor,descriptionHtml, variants=[] } = req.body;
+  const { title, productType, vendor, descriptionHtml, variants = [] } = req.body;
 
   if (!title) {
-    return res.status(400).json({ status: 0,message:"Validation failed", error:{
-      "field": [
+    return res.status(400).json({
+      status: 0, message: "Validation failed", error: {
+        "field": [
           "title"
-      ],
-      "message": "Title is required"
-  } });
+        ],
+        "message": "Title is required"
+      }
+    });
   }
 
   try {
     // Step 1: Create product with options
     const productOptions = [];
-    if(variants?.length > 0){
+    if (variants?.length > 0) {
       const uniqueColors = [...new Set(variants?.map(v => v.color).filter(Boolean))];
-    const uniqueSizes = [...new Set(variants?.map(v => v.size).filter(Boolean))];
-    const uniqueMaterial = [...new Set(variants?.map(v => v.pattern).filter(Boolean))];
+      const uniqueSizes = [...new Set(variants?.map(v => v.size).filter(Boolean))];
+      const uniqueMaterial = [...new Set(variants?.map(v => v.pattern).filter(Boolean))];
 
-    if (uniqueColors.length > 0) {
-      productOptions.push({ name: "Color", values: uniqueColors.map(c => ({ name: c })) });
-    }
-    if (uniqueSizes.length > 0) {
-      productOptions.push({ name: "Size", values: uniqueSizes.map(s => ({ name: s })) });
-    }
-    if (uniqueMaterial.length > 0) {
-      productOptions.push({ name: "Material", values: uniqueMaterial.map(m => ({ name: m })) });
-    }
-    
+      if (uniqueColors.length > 0) {
+        productOptions.push({ name: "Color", values: uniqueColors.map(c => ({ name: c })) });
+      }
+      if (uniqueSizes.length > 0) {
+        productOptions.push({ name: "Size", values: uniqueSizes.map(s => ({ name: s })) });
+      }
+      if (uniqueMaterial.length > 0) {
+        productOptions.push({ name: "Material", values: uniqueMaterial.map(m => ({ name: m })) });
+      }
+
     }
     // Validate each variant has values for all required options
-for (let i = 0; i < variants?.length; i++) {
-  const variant = variants[i];
+    for (let i = 0; i < variants?.length; i++) {
+      const variant = variants[i];
 
-  for (const option of productOptions) {
-    const name = option.name;
+      for (const option of productOptions) {
+        const name = option.name;
 
-    const missing =
-      (name === "Color" && !variant.color) ||
-      (name === "Size" && !variant.size) ||
-      (name === "Material" && !variant.pattern);
+        const missing =
+          (name === "Color" && !variant.color) ||
+          (name === "Size" && !variant.size) ||
+          (name === "Material" && !variant.pattern);
 
-    if (missing) {
-      return res.status(400).json({
-        status: 0,
-        message: `Missing required option value for variant at index ${i}`,
-        error: [{ field: [name=="Material" ? "Pattern":name], message: `${name=="Material" ? "Pattern":name} is required for all variants because it's defined as a product option.` }]
-      });
+        if (missing) {
+          return res.status(400).json({
+            status: 0,
+            message: `Missing required option value for variant at index ${i}`,
+            error: [{ field: [name == "Material" ? "Pattern" : name], message: `${name == "Material" ? "Pattern" : name} is required for all variants because it's defined as a product option.` }]
+          });
+        }
+      }
     }
-  }
-}
 
     const productInput = {
       title,
-      productType,vendor,descriptionHtml,
+      productType, vendor, descriptionHtml,
     };
 
-    if( productOptions?.length >0){
-      productInput. productOptions= productOptions
+    if (productOptions?.length > 0) {
+      productInput.productOptions = productOptions
     }
 
     const productRes = await axios.post(getApiUrl(), {
@@ -310,8 +312,8 @@ for (let i = 0; i < variants?.length; i++) {
     }
 
     const product = productResult.product;
-    if(variants?.length <=0){
-      return res.status(200).json({status:0,data:product})
+    if (variants?.length <= 0) {
+      return res.status(200).json({ status: 0, data: product })
     }
     const productId = product.id;
 
@@ -345,7 +347,7 @@ for (let i = 0; i < variants?.length; i++) {
     const variantMeta = []; // to map SKU and barcode
 
     for (const v of variants) {
-      const comboKey = `${v.color?.toLowerCase()?v.color?.toLowerCase():''}${v.size?.toLowerCase() ?`/`+v.size?.toLowerCase():''}${v.pattern?.toLowerCase()?`/`+v.pattern?.toLowerCase():''}`;
+      const comboKey = `${v.color?.toLowerCase() ? v.color?.toLowerCase() : ''}${v.size?.toLowerCase() ? `/` + v.size?.toLowerCase() : ''}${v.pattern?.toLowerCase() ? `/` + v.pattern?.toLowerCase() : ''}`;
       variantMeta.push({ sku: v.sku, barcode: v.barcode, price: v.price, });
       if (existingCombos.has(comboKey)) {
         console.warn(`Skipping existing variant: ${comboKey}`);
@@ -368,7 +370,7 @@ for (let i = 0; i < variants?.length; i++) {
         inventoryItem: {
           sku: v?.sku,
         },
-        barcode:v?.barcode,
+        barcode: v?.barcode,
         optionValues
       });
     }
@@ -402,7 +404,7 @@ for (let i = 0; i < variants?.length; i++) {
         price: meta?.price?.toString() || null,
         inventoryItem: {
           sku: meta?.sku,
-          tracked: true 
+          tracked: true
         },
         barcode: meta?.barcode || null,
       };
@@ -901,7 +903,7 @@ exports.getStockByVariantIds = async (req, res) => {
       };
     });
 
-    res.status(200).json({ status: 1, data:result });
+    res.status(200).json({ status: 1, data: result });
   } catch (error) {
     console.error("Error fetching stock for variants:", error.response?.data || error.message);
     res.status(500).json({
@@ -1433,12 +1435,12 @@ exports.handleOrderEditWebhook = async (req, res) => {
       subtotal_amount: orderData.subtotalPriceSet?.shopMoney?.amount,
       shipping_amount: orderData.totalShippingPriceSet?.shopMoney?.amount
     };
-
+    console.log("enriched payload", enrichedPayload)
     // Send to ERP API
-    const erpApiUrl = "https://fynbooks.com:8090/ERP_V_0.1/BillPrintFormat/PrintFormat/swapna_online_order.php?mode=3";
-    
-    // Using axios to POST the enriched payload
-    const erpRes = await axios.post(erpApiUrl, enrichedPayload);
+    // const erpApiUrl = "https://fynbooks.com:8090/ERP_V_0.1/BillPrintFormat/PrintFormat/swapna_online_order.php?mode=3";
+
+    // // Using axios to POST the enriched payload
+    // const erpRes = await axios.post(erpApiUrl, enrichedPayload);
 
     console.log("ERP API Response:", erpRes.status, erpRes.data);
 
@@ -1452,4 +1454,4 @@ exports.handleOrderEditWebhook = async (req, res) => {
     console.error("Error handling order edit webhook:", error.response?.data || error.message);
     res.status(500).json({ status: 0, error: "Failed to process order edit webhook", details: error.message });
   }
-};
+};
