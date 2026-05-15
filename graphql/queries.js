@@ -235,7 +235,27 @@ exports.getOrderDetailsForSyncQuery = `
           amount
         }
       }
+      currentTotalPriceSet {
+        shopMoney {
+          amount
+        }
+      }
+      currentSubtotalPriceSet {
+        shopMoney {
+          amount
+        }
+      }
       totalShippingPriceSet {
+        shopMoney {
+          amount
+        }
+      }
+      totalTaxSet {
+        shopMoney {
+          amount
+        }
+      }
+      currentTotalTaxSet {
         shopMoney {
           amount
         }
@@ -243,3 +263,4 @@ exports.getOrderDetailsForSyncQuery = `
     }
   }
 `;
+

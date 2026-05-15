@@ -1431,18 +1431,19 @@ exports.handleOrderEditWebhook = async (req, res) => {
     // The user wants to include order info: total amount, total product amount (subtotal), shipping amount
     const enrichedPayload = {
       ...payload,
-      total_amount: orderData.totalPriceSet?.shopMoney?.amount,
-      subtotal_amount: orderData.subtotalPriceSet?.shopMoney?.amount,
-      shipping_amount: orderData.totalShippingPriceSet?.shopMoney?.amount
+      total_amount: orderData.currentTotalPriceSet?.shopMoney?.amount || orderData.totalPriceSet?.shopMoney?.amount,
+      subtotal_amount: orderData.currentSubtotalPriceSet?.shopMoney?.amount || orderData.subtotalPriceSet?.shopMoney?.amount,
+      shipping_amount: orderData.totalShippingPriceSet?.shopMoney?.amount,
+      tax_amount: orderData.currentTotalTaxSet?.shopMoney?.amount || orderData.totalTaxSet?.shopMoney?.amount
     };
     console.log("enriched payload", enrichedPayload)
     // Send to ERP API
-    // const erpApiUrl = "https://fynbooks.com:8090/ERP_V_0.1/BillPrintFormat/PrintFormat/swapna_online_order.php?mode=3";
+    const erpApiUrl = "https://fynbooks.com:8090/ERP_V_0.1/BillPrintFormat/PrintFormat/swapna_online_order.php?mode=3";
 
     // // Using axios to POST the enriched payload
-    // const erpRes = await axios.post(erpApiUrl, enrichedPayload);
+    const erpRes = await axios.post(erpApiUrl, enrichedPayload);
 
-    console.log("ERP API Response:", erpRes.status, erpRes.data);
+    // console.log("ERP API Response:", erpRes.status, erpRes.data);
 
     res.json({
       status: 1,
