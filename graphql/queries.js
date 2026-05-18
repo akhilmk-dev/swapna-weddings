@@ -250,6 +250,17 @@ exports.getOrderDetailsForSyncQuery = `
           amount
         }
       }
+      shippingLines(first: 10) {
+        edges {
+          node {
+            discountedPriceSet {
+              shopMoney {
+                amount
+              }
+            }
+          }
+        }
+      }
       totalTaxSet {
         shopMoney {
           amount

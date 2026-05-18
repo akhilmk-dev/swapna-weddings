@@ -1427,13 +1427,19 @@ exports.handleOrderEditWebhook = async (req, res) => {
       return res.status(404).json({ status: 0, message: "Order not found in Shopify" });
     }
 
+    // Calculate current active shipping amount from shipping lines
+    const activeShippingAmount = orderData.shippingLines?.edges?.reduce((total, edge) => {
+      const amount = parseFloat(edge.node?.discountedPriceSet?.shopMoney?.amount || 0);
+      return total + amount;
+    }, 0).toFixed(2);
+
     // Enrich payload
     // The user wants to include order info: total amount, total product amount (subtotal), shipping amount
     const enrichedPayload = {
       ...payload,
       total_amount: orderData.currentTotalPriceSet?.shopMoney?.amount || orderData.totalPriceSet?.shopMoney?.amount,
       subtotal_amount: orderData.currentSubtotalPriceSet?.shopMoney?.amount || orderData.subtotalPriceSet?.shopMoney?.amount,
-      shipping_amount: orderData.totalShippingPriceSet?.shopMoney?.amount,
+      shipping_amount: activeShippingAmount || orderData.totalShippingPriceSet?.shopMoney?.amount,
       tax_amount: orderData.currentTotalTaxSet?.shopMoney?.amount || orderData.totalTaxSet?.shopMoney?.amount
     };
     console.log("enriched payload", enrichedPayload)
