@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createProduct, getProducts, updateProduct, getProductById, bulkUpdateStockAndPrice, getStockByVariantIds, cancelOrder, getOrderList, removeLineItem, getDraftOrders, updateOrderIdMetafield, getOrderCustomOrderId,  getLineItems } = require('../services/shopifyService');
+const { createProduct, getProducts, updateProduct, getProductById, bulkUpdateStockAndPrice, getStockByVariantIds, cancelOrder, getOrderList, removeLineItem, getDraftOrders, updateOrderIdMetafield, getOrderCustomOrderId, getLineItems, addVariantToProduct } = require('../services/shopifyService');
 const { default: axios } = require('axios');
 
 // POST /api/products/create
@@ -22,5 +22,6 @@ router.post('/line-item',getLineItems);
 // router.post('/draft-orders', getDraftOrders);
 router.post('/update-custom-id', updateOrderIdMetafield);
 router.post('/custom-id', getOrderCustomOrderId);
+router.post('/add-variant', addVariantToProduct);
 
 module.exports = router;

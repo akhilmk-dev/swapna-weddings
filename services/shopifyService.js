@@ -464,6 +464,262 @@ exports.createProduct = async (req, res) => {
   }
 };
 
+exports.addVariantToProduct = async (req, res) => {
+  const { productId, variants = [] } = req.body;
+
+  if (!productId || !productId.startsWith('gid://shopify/Product/') || !productId.split('/').pop().trim()) {
+    return res.status(400).json({ status: 0, errors: [{ field: ['productId'], message: 'Valid productId (GID) is required' }] });
+  }
+  if (!Array.isArray(variants) || variants.length === 0) {
+    return res.status(400).json({ status: 0, errors: [{ field: ['variants'], message: 'variants must be a non-empty array' }] });
+  }
+
+  const productOptionsCreateMutation = `
+    mutation productOptionsCreate($productId: ID!, $options: [OptionCreateInput!]!) {
+      productOptionsCreate(productId: $productId, options: $options) {
+        product {
+          options {
+            id
+            name
+            optionValues { name }
+          }
+        }
+        userErrors { field message code }
+      }
+    }
+  `;
+
+  const productOptionUpdateMutation = `
+    mutation productOptionUpdate($productId: ID!, $option: OptionUpdateInput!, $optionValuesToAdd: [OptionValueCreateInput!]) {
+      productOptionUpdate(productId: $productId, option: $option, optionValuesToAdd: $optionValuesToAdd) {
+        product {
+          options {
+            id
+            name
+            optionValues { name }
+          }
+        }
+        userErrors { field message code }
+      }
+    }
+  `;
+
+  const FIELD_TO_OPTION = { color: 'Color', size: 'Size', pattern: 'Material' };
+
+  try {
+    // Phase 1: Fetch current product options and existing variant combos
+    const fetchQuery = `
+      query GetProductFull($id: ID!) {
+        product(id: $id) {
+          options {
+            id
+            name
+            optionValues { name }
+          }
+          variants(first: 100) {
+            edges {
+              node {
+                id
+                selectedOptions { name value }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const fetchRes = await axios.post(getApiUrl(), { query: fetchQuery, variables: { id: productId } }, { headers: getHeaders() });
+
+    if (fetchRes.data.errors) {
+      return res.status(400).json({ status: 0, error: 'GraphQL error fetching product', details: fetchRes.data.errors });
+    }
+
+    const product = fetchRes.data.data?.product;
+    if (!product) {
+      return res.status(404).json({ status: 0, error: 'Product not found' });
+    }
+
+    // Build option map: name -> { id, values: Set }
+    const optionMap = {};
+    product.options.forEach(opt => {
+      optionMap[opt.name] = { id: opt.id, values: new Set(opt.optionValues.map(v => v.name.toLowerCase())) };
+    });
+
+    // Build existing combo set
+    const existingCombos = new Set(
+      product.variants.edges.map(({ node }) =>
+        node.selectedOptions.map(o => o.value.toLowerCase()).join('/')
+      )
+    );
+
+    // Phase 2: Collect which options/values need to be added
+    const newOptions = {}; // optionName -> Set of new values (option doesn't exist at all)
+    const optionValueAdditions = {}; // optionName -> Set of new values (option exists, value is new)
+
+    for (const v of variants) {
+      for (const [field, optionName] of Object.entries(FIELD_TO_OPTION)) {
+        const val = v[field];
+        if (!val) continue;
+
+        if (!optionMap[optionName]) {
+          // Option doesn't exist
+          if (!newOptions[optionName]) newOptions[optionName] = new Set();
+          newOptions[optionName].add(val);
+        } else if (!optionMap[optionName].values.has(val.toLowerCase())) {
+          // Option exists but value is new
+          if (!optionValueAdditions[optionName]) optionValueAdditions[optionName] = new Set();
+          optionValueAdditions[optionName].add(val);
+        }
+      }
+
+      // Handle any extra fields not in FIELD_TO_OPTION
+      for (const [key, val] of Object.entries(v)) {
+        if (['color', 'size', 'pattern', 'price', 'sku', 'barcode'].includes(key) || !val) continue;
+        const optionName = key.charAt(0).toUpperCase() + key.slice(1);
+        if (!optionMap[optionName]) {
+          if (!newOptions[optionName]) newOptions[optionName] = new Set();
+          newOptions[optionName].add(val);
+        } else if (!optionMap[optionName].values.has(val.toLowerCase())) {
+          if (!optionValueAdditions[optionName]) optionValueAdditions[optionName] = new Set();
+          optionValueAdditions[optionName].add(val);
+        }
+      }
+    }
+
+    // Create brand-new options
+    if (Object.keys(newOptions).length > 0) {
+      const optionsToCreate = Object.entries(newOptions).map(([name, values]) => ({
+        name,
+        values: [...values].map(v => ({ name: v }))
+      }));
+
+      const createOptRes = await axios.post(
+        getApiUrl(),
+        { query: productOptionsCreateMutation, variables: { productId, options: optionsToCreate } },
+        { headers: getHeaders() }
+      );
+
+      if (createOptRes.data.errors) {
+        return res.status(400).json({ status: 0, error: 'Failed to create new options', details: createOptRes.data.errors });
+      }
+
+      const createOptResult = createOptRes.data.data?.productOptionsCreate;
+      if (createOptResult?.userErrors?.length) {
+        return res.status(400).json({ status: 0, error: 'New option creation failed', details: createOptResult.userErrors });
+      }
+
+      // Update optionMap with newly created options
+      createOptResult.product.options.forEach(opt => {
+        optionMap[opt.name] = { id: opt.id, values: new Set(opt.optionValues.map(v => v.name.toLowerCase())) };
+      });
+    }
+
+    // Add new values to existing options
+    for (const [optionName, values] of Object.entries(optionValueAdditions)) {
+      const optionId = optionMap[optionName]?.id;
+      if (!optionId) continue;
+
+      const updateOptRes = await axios.post(
+        getApiUrl(),
+        {
+          query: productOptionUpdateMutation,
+          variables: {
+            productId,
+            option: { id: optionId },
+            optionValuesToAdd: [...values].map(v => ({ name: v }))
+          }
+        },
+        { headers: getHeaders() }
+      );
+
+      if (updateOptRes.data.errors) {
+        return res.status(400).json({ status: 0, error: `Failed to update option ${optionName}`, details: updateOptRes.data.errors });
+      }
+
+      const updateOptResult = updateOptRes.data.data?.productOptionUpdate;
+      if (updateOptResult?.userErrors?.length) {
+        return res.status(400).json({ status: 0, error: `Option update failed for ${optionName}`, details: updateOptResult.userErrors });
+      }
+
+      // Update local values set
+      values.forEach(v => optionMap[optionName].values.add(v.toLowerCase()));
+    }
+
+    // Phase 3: Build and create variants
+    const newVariants = [];
+
+    for (const v of variants) {
+      const comboValues = [];
+
+      for (const [field, optionName] of Object.entries(FIELD_TO_OPTION)) {
+        if (v[field]) comboValues.push(v[field].toLowerCase());
+      }
+      for (const [key, val] of Object.entries(v)) {
+        if (['color', 'size', 'pattern', 'price', 'sku', 'barcode'].includes(key) || !val) continue;
+        comboValues.push(val.toLowerCase());
+      }
+
+      const comboKey = comboValues.join('/');
+      if (existingCombos.has(comboKey)) {
+        console.warn(`Skipping duplicate variant combo: ${comboKey}`);
+        continue;
+      }
+
+      const optionValues = [];
+
+      for (const [field, optionName] of Object.entries(FIELD_TO_OPTION)) {
+        const val = v[field];
+        if (val && optionMap[optionName]) {
+          optionValues.push({ name: val, optionId: optionMap[optionName].id });
+        }
+      }
+
+      // Extra dynamic options
+      for (const [key, val] of Object.entries(v)) {
+        if (['color', 'size', 'pattern', 'price', 'sku', 'barcode'].includes(key) || !val) continue;
+        const optionName = key.charAt(0).toUpperCase() + key.slice(1);
+        if (optionMap[optionName]) {
+          optionValues.push({ name: val, optionId: optionMap[optionName].id });
+        }
+      }
+
+      newVariants.push({
+        price: v.price?.toString(),
+        inventoryItem: { sku: v.sku },
+        barcode: v.barcode || null,
+        optionValues
+      });
+
+      existingCombos.add(comboKey);
+    }
+
+    if (newVariants.length === 0) {
+      return res.status(200).json({ status: 0, message: 'All provided variants already exist on this product' });
+    }
+
+    const bulkRes = await axios.post(
+      getApiUrl(),
+      { query: productVariantsBulkCreateMutation, variables: { productId, variants: newVariants } },
+      { headers: getHeaders() }
+    );
+
+    if (bulkRes.data.errors) {
+      return res.status(400).json({ status: 0, error: 'GraphQL error creating variants', details: bulkRes.data.errors });
+    }
+
+    const created = bulkRes.data.data?.productVariantsBulkCreate;
+    if (!created || created.userErrors?.length) {
+      return res.status(400).json({ status: 0, error: 'Variant creation failed', details: created?.userErrors || [] });
+    }
+
+    res.json({ status: 1, productVariants: created.productVariants });
+
+  } catch (err) {
+    console.error('addVariantToProduct error:', err.response?.data || err.message);
+    res.status(500).json({ status: 0, error: 'Unexpected server error' });
+  }
+};
+
 exports.getProducts = async (req, res) => {
   try {
     const response = await axios.post(
