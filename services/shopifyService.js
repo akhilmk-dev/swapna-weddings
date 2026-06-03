@@ -712,7 +712,32 @@ exports.addVariantToProduct = async (req, res) => {
       return res.status(400).json({ status: 0, error: 'Variant creation failed', details: created?.userErrors || [] });
     }
 
-    res.json({ status: 1, productVariants: created.productVariants });
+    const fullProductRes = await axios.post(getApiUrl(), {
+      query: `
+        query GetFullProduct($productId: ID!) {
+          product(id: $productId) {
+            id
+            title
+            variants(first: 100) {
+              edges {
+                node {
+                  id
+                  barcode
+                  price
+                  sku
+                  inventoryItem {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      variables: { productId }
+    }, { headers: getHeaders() });
+
+    res.json({ status: 1, product: fullProductRes?.data?.data?.product });
 
   } catch (err) {
     console.error('addVariantToProduct error:', err.response?.data || err.message);
